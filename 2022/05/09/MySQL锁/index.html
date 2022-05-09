@@ -1,0 +1,162 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content=""><title>MySQL锁相关 | OverTheRainbow</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=1.0.0"><link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/npm/normalize.css/normalize.min.css"><link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/npm/purecss/build/pure-min.min.css"><link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/npm/purecss/build/grids-responsive-min.css"><link rel="stylesheet" href="//cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js"></script><link rel="icon" mask="" sizes="any" href="/favicon.ico"><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><script type="text/javascript" src="//cdn.jsdelivr.net/npm/clipboard/dist/clipboard.min.js"></script><script type="text/javascript" src="//cdn.jsdelivr.net/gh/codeseven/toastr/build/toastr.min.js"></script><link rel="stylesheet" href="//cdn.jsdelivr.net/gh/codeseven/toastr/build/toastr.min.css"><meta name="generator" content="Hexo 6.1.0"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">MySQL锁相关</h1><a id="logo" href="/.">OverTheRainbow</a><p class="description"></p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a><a href="/atom.xml"><i class="fa fa-rss"> 订阅</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">MySQL锁相关</h1><div class="post-meta">2022-05-09</div><div class="post-content"><h2 id="乐观锁和悲观锁"><a href="#乐观锁和悲观锁" class="headerlink" title="乐观锁和悲观锁"></a>乐观锁和悲观锁</h2><p><strong>没有做好并发控制，就可能导致脏读、幻读和不可重复读等问题。</strong></p>
+<p>而实现并发控制的主要手段分为乐观并发控制和悲观并发控制两种。</p>
+<p>乐观锁比较适用于读多写少的情况（多读场景），悲观锁比较适用于写多读少的情况（多写场景）。</p>
+<h3 id="悲观锁（悲观并发控制）"><a href="#悲观锁（悲观并发控制）" class="headerlink" title="悲观锁（悲观并发控制）"></a>悲观锁（悲观并发控制）</h3><h4 id="定义"><a href="#定义" class="headerlink" title="定义"></a>定义</h4><blockquote>
+<p>在<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E5%85%B3%E7%B3%BB%E6%95%B0%E6%8D%AE%E5%BA%93%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9F">关系数据库管理系统</a>里，<strong>悲观并发控制</strong>（又名“<strong>悲观锁</strong>”，Pessimistic Concurrency Control，缩写“PCC”）是一种并发控制的方法。它可以阻止一个事务以影响其他用户的方式来修改数据。如果一个事务执行的操作读某行数据应用了锁，那只有当这个事务把锁释放，其他事务才能够执行与该锁冲突的操作。</p>
+<p>悲观并发控制主要用于数据争用激烈的环境，以及发生并发冲突时使用锁保护数据的成本要低于回滚事务的成本的环境中。</p>
+</blockquote>
+<h4 id="优点与不足"><a href="#优点与不足" class="headerlink" title="优点与不足"></a>优点与不足</h4><blockquote>
+<p>悲观并发控制实际上是“先取锁再访问”的保守策略，为数据处理的安全提供了保证。但是在效率方面，处理加锁的机制会让数据库产生额外的开销，还有增加产生<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E6%AD%BB%E9%94%81">死锁</a>的机会；另外，在只读型事务处理中由于不会产生冲突，也没必要使用锁，这样做只能增加系统<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E8%B4%9F%E8%BD%BD">负载</a>；还有会降低了并行性，一个事务如果锁定了某行数据，其他事务就必须等待该事务处理完才可以处理那行数据。</p>
+</blockquote>
+<h4 id="实现机制"><a href="#实现机制" class="headerlink" title="实现机制"></a>实现机制</h4><p><em>悲观锁是一种思想，并不是数据库所独有！！</em></p>
+<p>悲观锁的实现，往往依靠数据库提供的锁机制。</p>
+<p><strong>也只有数据库层提供的锁机制才能真正保证数据访问的排他性，否则，即使在本系统中实现了加锁机制，也无法保证外部系统不会修改数据。</strong></p>
+<p>总是假设最坏的情况，每次读取数据的时候都默认其他线程会更改数据，因此需要进行加锁操作，当其他线程想要访问数据时，都需要阻塞挂起。</p>
+<p><strong>先取锁，再访问。</strong></p>
+<h4 id="应用"><a href="#应用" class="headerlink" title="应用"></a>应用</h4><ul>
+<li><p>传统的关系型数据库里边就用到了很多这种锁机制，<strong>比如行锁，表锁等，读锁，写锁等，都是在做操作之前先上锁。</strong></p>
+</li>
+<li><p>Java 中的 <code>Synchronized</code> 和 <code>ReentrantLock</code> 等独占锁（排他锁）也是一种悲观锁思想的实现，因为<code>Synchronzied</code>和<code>ReetrantLock</code>不管是否持有资源，它都会尝试去加锁。</p>
+</li>
+</ul>
+<h4 id="分类"><a href="#分类" class="headerlink" title="分类"></a>分类</h4><ul>
+<li><p>共享锁</p>
+<p>shared locks，读锁，S锁</p>
+<p>多个事务对于同一数据可以共享一把锁，都能访问到数据，只读，不能修改。</p>
+</li>
+<li><p>排他锁</p>
+<p>exclusive locks，写锁，X锁</p>
+<p>不能与其他锁并存，如果一个事务获取了排他锁，其他事务不能获取任何锁，包括共享锁。获取排他锁的事务可以对数据进行修改和更新。</p>
+</li>
+</ul>
+<h4 id="小结"><a href="#小结" class="headerlink" title="小结"></a>小结</h4><h5 id="优点"><a href="#优点" class="headerlink" title="优点"></a>优点</h5><ul>
+<li>先取锁，再访问，保证了数据处理的安全；</li>
+</ul>
+<h5 id="缺点"><a href="#缺点" class="headerlink" title="缺点"></a>缺点</h5><ul>
+<li><p>效率低</p>
+<p>处理加锁的机制会让数据库产生额外的开销</p>
+</li>
+<li><p>死锁产生可能性up</p>
+</li>
+<li><p>降低并行性</p>
+<p>某行数据被锁了，其他要操作这条数据的事务就只能排队等了，变串行了</p>
+</li>
+</ul>
+<h3 id="乐观锁（乐观并发控制）"><a href="#乐观锁（乐观并发控制）" class="headerlink" title="乐观锁（乐观并发控制）"></a>乐观锁（乐观并发控制）</h3><p>相对悲观而言，假设数据一般情况不会造成冲突。</p>
+<p>在数据进行提交更新的时候，才会正式对数据的冲突与否进行检测。如果冲突，则返回给用户异常信息，让用户决定如何去做。</p>
+<p>不会上锁。</p>
+<p><strong>适用于读多写少</strong></p>
+<h4 id="定义-1"><a href="#定义-1" class="headerlink" title="定义"></a>定义</h4><blockquote>
+<p>在<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E5%85%B3%E7%B3%BB%E6%95%B0%E6%8D%AE%E5%BA%93%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9F">关系数据库管理系统</a>里，<strong>乐观并发控制</strong>（又名“<strong>乐观锁</strong>”，Optimistic Concurrency Control，缩写“OCC”）是一种<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6">并发控制</a>的方法。它假设多用户并发的<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E6%95%B0%E6%8D%AE%E5%BA%93%E4%BA%8B%E5%8A%A1">事务</a>在处理时不会彼此互相影响，各事务能够在不产生锁的情况下处理各自影响的那部分数据。在<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/w/index.php?title=%E6%8F%90%E4%BA%A4_(SQL)&action=edit&redlink=1">提交</a>数据更新之前，每个事务会先检查在该事务读取数据后，有没有其他事务又修改了该数据。如果其他事务有更新的话，正在提交的事务会进行<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E5%9B%9E%E6%BB%9A_(SQL)">回滚</a>。</p>
+<p>乐观并发控制多数用于数据争用不大、冲突较少的环境中，这种环境中，偶尔回滚事务的成本会低于读取数据时锁定数据的成本，因此可以获得比其他<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6">并发控制</a>方法更高的<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E5%90%9E%E5%90%90%E9%87%8F">吞吐量</a>。</p>
+</blockquote>
+<h4 id="阶段"><a href="#阶段" class="headerlink" title="阶段"></a>阶段</h4><blockquote>
+<ul>
+<li><strong>读取</strong>：事务将数据读入缓存，这时系统会给事务分派一个<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E6%99%82%E9%96%93%E6%88%B3">时间戳</a>。</li>
+<li><strong>校验</strong>：事务执行完毕后，进行提交。这时同步校验所有事务，如果事务所读取的数据在读取之后又被其他事务修改，则产生冲突，事务被中断回滚。</li>
+<li><strong>写入</strong>：通过校验阶段后，将更新的数据写入数据库。</li>
+</ul>
+</blockquote>
+<h4 id="优点与不足-1"><a href="#优点与不足-1" class="headerlink" title="优点与不足"></a>优点与不足</h4><blockquote>
+<p>乐观并发控制相信事务之间的数据竞争（data race）的概率是比较小的，因此尽可能直接做下去，直到提交的时候才去锁定，所以不会产生任何锁和死锁。但如果直接简单这么做，还是有可能会遇到不可预期的结果，例如两个事务都读取了数据库的某一行，经过修改以后写回数据库，这时就遇到了问题。</p>
+</blockquote>
+<p><strong>不能解决部分脏读的问题！！！</strong></p>
+<h4 id="实现机制-1"><a href="#实现机制-1" class="headerlink" title="实现机制"></a>实现机制</h4><h5 id="CAS思想"><a href="#CAS思想" class="headerlink" title="CAS思想"></a>CAS思想</h5><p>Compare and Swap</p>
+<p><strong>CAS机制中使用了3个基本操作数：内存地址V，旧的预期值A，要修改的新值B。更新一个变量的时候，只有当变量的预期值A和内存地址V当中的实际值相同时，才会将内存地址V对应的值修改为B。</strong></p>
+<blockquote>
+<p>Doug lea大神在java同步器中大量使用了CAS技术，鬼斧神工的实现了多线程执行的安全性。</p>
+</blockquote>
+<blockquote>
+<p><strong>CAS加volatile关键字是实现并发包的基石。没有CAS就不会有并发包，synchronized是一种独占锁、悲观锁，java.util.concurrent中借助了CAS指令实现了一种区别于synchronized的一种乐观锁。</strong></p>
+</blockquote>
+<h5 id="CAS的缺陷"><a href="#CAS的缺陷" class="headerlink" title="CAS的缺陷"></a>CAS的缺陷</h5><ul>
+<li><p>ABA问题</p>
+<p>如果我们缓存值为0，我们的线程想把它更改为1，这个时候我们还没有读取值，但是有另一个线程把它改为了1随后马上又改成了0，<br>这时我们的线程读取目标值也为0。</p>
+<p>粗一看这好像并不会产生什么问题，因为结果最终确实是修改成了我们的期望值。但是在某些情况下，就会产生一些问题。</p>
+<p>实际案例：</p>
+<ul>
+<li><p><a target="_blank" rel="noopener" href="https://blog.csdn.net/qq_32998153/article/details/79529704?utm_medium=distribute.pc_relevant.none-task-blog-2~default~BlogCommendFromMachineLearnPai2~default-2.control&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2~default~BlogCommendFromMachineLearnPai2~default-2.control">存取款问题</a></p>
+<p>在下面这个问题中，由于ATM产生故障，导致用户账户里的钱被多扣了：</p>
+<table>
+<thead>
+<tr>
+<th>ATM产生故障</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>导致两个扣款线程被开启：线程1和线程2，期望从余额为100的账户里扣款50</td>
+</tr>
+<tr>
+<td>线程1扣款成功：账户余额减少50</td>
+</tr>
+<tr>
+<td>线程2阻塞：账户余额50，不满足预期100</td>
+</tr>
+<tr>
+<td>线程3开启：存入被扣款金额50，账户余额更新为100</td>
+</tr>
+<tr>
+<td>线程2扣款：满足预期100，扣款50，账户余额变为50</td>
+</tr>
+</tbody></table>
+</li>
+</ul>
+</li>
+<li><p>循环时间长开销大</p>
+<p>一般我们说，旧的预期值和当前内存地址中的实际值相同时，则更新，成功返回，否则失败。但一般应用场景下，CAS都会带有重试机制（循环实现空转，直到成功）。</p>
+</li>
+<li><p>只能保证一个共享变量的原子操作</p>
+<p>CAS机制所保证的知识一个变量的原子性操作，而不能保证整个代码块的原子性。比如需要保证3个变量共同进行原子性的更新，就不得不使用synchronized了。</p>
+</li>
+</ul>
+<h5 id="CAS思想实现乐观锁"><a href="#CAS思想实现乐观锁" class="headerlink" title="CAS思想实现乐观锁"></a>CAS思想实现乐观锁</h5><ul>
+<li><p>使用数据版本<code>version</code>实现</p>
+<p>在表中添加一个字段，该字段记录每条数据的版本，每次对记录的写操作都会使版本+1；</p>
+<p>更新时如果版本号不一致，则代表在这个时间段，该记录以及被其他线程修改过了， 认为是过期数据，返回冲突信息，让用户决定下一步动作，比如重试（重新读取最新数据，再尝试更新）；</p>
+</li>
+<li><p>使用时间戳<code>timestamp</code>实现</p>
+<p>增加一个<code>timestamp</code>类型的字段，每次对数据进行写操作时，记录当前的时间戳；</p>
+<p>更新提交的时检查当前数据库中数据的时间戳和自己更新前取到的时间戳是否一致，如果一致则代表此刻没有冲突，可以提交更新，同时时间戳更新为当前时间，否则就是该时间段有其他线程也更新提交过，返回冲突信息，等待用户下一步动作。</p>
+</li>
+</ul>
+<h5 id="注意事项"><a href="#注意事项" class="headerlink" title="注意事项"></a>注意事项</h5><p>但是我们要注意的是，要实现乐观锁的思想的同时，我们必须要要保证CAS多个操作的原子性，即获取数据库数据的版本，拿数据库的数据版本与之前拿到的版本的比较，以及更新数据等这几个操作的执行必须是连贯执行，具有复合操作的原子性。所以如果是数据库的SQL，那么我们就要保证多个SQL操作处于同一个事务中。</p>
+<h4 id="小结-1"><a href="#小结-1" class="headerlink" title="小结"></a>小结</h4><ol>
+<li><p>乐观锁为什么不会产生死锁？</p>
+<p>乐观并发控制相信事务之间的数据竞争（data race）的概率是比较小的，因此尽可能直接做下去，直到提交的时候才去锁定，所以不会产生任何锁和死锁。</p>
+</li>
+</ol>
+<h3 id="死锁和死锁检测"><a href="#死锁和死锁检测" class="headerlink" title="死锁和死锁检测"></a>死锁和死锁检测</h3><p>事务 A 和事务 B 在互相等待对方的资源释放，就是进入了死锁状态。当出现死锁以后，有两种策略：</p>
+<ul>
+<li><p><strong>等待直至超时</strong></p>
+<p>超时时间可以通过参数<code>innodb_lock_wait_timeout</code>设置。Innodb中的默认等待时间为50秒。</p>
+<p>一般不采用，因为参数不太好选取。太长影响数据库整体性能，太短可能会造成正常等待情况被误杀。</p>
+</li>
+<li><p><strong>发起死锁检测</strong></p>
+<p>发现死锁后，主动回滚死锁链条中的某一个事务，让其他事务得以继续执行。将参数<code>innodb_deadlock_detect</code>设置为<code>on</code>可以开启此逻辑。</p>
+<p>但是，死锁检测期间需要消耗大量的CPU资源。所以，热点行的更新会导致性能问题。可能的一些解决方案如下：</p>
+<ul>
+<li><p>如果能确保这个业务一定不会出现死锁，可以临时把死锁检测关掉。</p>
+<p>具有一定的风险。因为如果出现死锁，可以回滚，对于业务是无损的。而如果关掉死锁检测，则有可能导致大量超时。</p>
+</li>
+<li><p>控制并发度。</p>
+<p>限制一行数据可以同时被多少条线程更新。</p>
+</li>
+<li><p>从设计上进行优化。</p>
+<p>将一行改成逻辑上的多行来减少锁冲突。</p>
+</li>
+</ul>
+</li>
+</ul>
+<h3 id="MVCC多版本并发控制"><a href="#MVCC多版本并发控制" class="headerlink" title="MVCC多版本并发控制"></a>MVCC多版本并发控制</h3><p>MVCC可以与乐观并发控制和悲观并发控制相结合，以提高数据库的读性能。</p>
+<p><strong>MVCC最大的优势：读不加锁，读写不冲突。</strong></p>
+<blockquote>
+<p>多版本并发控制（MVCC）是一种用来解决读-写冲突的无锁并发控制，也就是为事务分配单向增长的时间戳，为每个修改保存一个版本，版本与事务时间戳关联，读操作只读该事务开始前的数据库的快照。 所以MVCC可以为数据库解决以下问题</p>
+<p>在并发读写数据库时，可以做到在读操作时不用阻塞写操作，写操作也不用阻塞读操作，提高了数据库并发读写的性能<br>同时还可以解决脏读，幻读，不可重复读等事务隔离问题，但不能解决更新丢失问题</p>
+</blockquote>
+<h3 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h3><p>- [1] <a target="_blank" rel="noopener" href="https://www.jianshu.com/p/d2ac26ca6525">什么是乐观锁，什么是悲观锁</a></p>
+<p>- [2] <a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E6%82%B2%E8%A7%82%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6">悲观并发控制</a></p>
+<p>- [3] <a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E4%B9%90%E8%A7%82%E5%B9%B6%E5%8F%91%E6%8E%A7%E5%88%B6">乐观并发控制</a></p>
+<p>- [4] <a target="_blank" rel="noopener" href="https://blog.csdn.net/qq_37113604/article/details/81582784?utm_medium=distribute.pc_relevant.none-task-blog-2~default~BlogCommendFromMachineLearnPai2~default-2.control&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2~default~BlogCommendFromMachineLearnPai2~default-2.control">CAS原理分析</a></p>
+<p>- [5] <a target="_blank" rel="noopener" href="https://blog.csdn.net/qq_32998153/article/details/79529704?utm_medium=distribute.pc_relevant.none-task-blog-2~default~BlogCommendFromMachineLearnPai2~default-2.control&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2~default~BlogCommendFromMachineLearnPai2~default-2.control">什么是CAS机制？</a></p>
+<p>- [6] <a target="_blank" rel="noopener" href="https://blog.csdn.net/SnailMann/article/details/94724197?utm_medium=distribute.pc_relevant.none-task-blog-2~default~BlogCommendFromMachineLearnPai2~default-3.control&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2~default~BlogCommendFromMachineLearnPai2~default-3.control">MVCC多版本并发控制</a></p>
+</div><div class="tags"><a href="/tags/MySQL"><i class="fa fa-tag">MySQL</i></a><a href="/tags/锁"><i class="fa fa-tag">锁</i></a><a href="/tags/技术"><i class="fa fa-tag">技术</i></a></div><div class="post-nav"><a class="next" href="/2022/05/09/%E7%BC%93%E5%AD%98/">缓存</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form class="search-form" action="//www.google.com/search" method="get" accept-charset="utf-8" target="_blank"><input type="text" name="q" maxlength="20" placeholder="Search"/><input type="hidden" name="sitesearch" value="http://example.com"/></form></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/MySQL/" style="font-size: 15px;">MySQL</a> <a href="/tags/%E9%94%81/" style="font-size: 15px;">锁</a> <a href="/tags/%E6%8A%80%E6%9C%AF/" style="font-size: 15px;">技术</a> <a href="/tags/%E7%BC%93%E5%AD%98/" style="font-size: 15px;">缓存</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2022/05/09/MySQL%E9%94%81/">MySQL锁相关</a></li><li class="post-list-item"><a class="post-list-link" href="/2022/05/09/%E7%BC%93%E5%AD%98/">缓存</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul></ul><a href="http://www.example1.com/" title="site-name1" target="_blank">site-name1</a><ul></ul><a href="http://www.example2.com/" title="site-name2" target="_blank">site-name2</a><ul></ul><a href="http://www.example3.com/" title="site-name3" target="_blank">site-name3</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2022 <a href="/." rel="nofollow">OverTheRainbow.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=1.0.0" async></script><script type="text/javascript" src="//cdn.jsdelivr.net/gh/fancyapps/fancybox/dist/jquery.fancybox.min.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=1.0.0" async></script><link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox/dist/jquery.fancybox.min.css"><script type="text/javascript" src="/js/copycode.js?v=1.0.0" successtext="复制成功!"></script><link rel="stylesheet" type="text/css" href="/css/copycode.css?v=1.0.0"><script type="text/javascript" src="/js/codeblock-resizer.js?v=1.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=1.0.0"></script></div></body></html>
