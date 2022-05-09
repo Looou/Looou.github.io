@@ -1,0 +1,71 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content=""><title>缓存 | OverTheRainbow</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=1.0.0"><link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/npm/normalize.css/normalize.min.css"><link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/npm/purecss/build/pure-min.min.css"><link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/npm/purecss/build/grids-responsive-min.css"><link rel="stylesheet" href="//cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js"></script><link rel="icon" mask="" sizes="any" href="/favicon.ico"><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><script type="text/javascript" src="//cdn.jsdelivr.net/npm/clipboard/dist/clipboard.min.js"></script><script type="text/javascript" src="//cdn.jsdelivr.net/gh/codeseven/toastr/build/toastr.min.js"></script><link rel="stylesheet" href="//cdn.jsdelivr.net/gh/codeseven/toastr/build/toastr.min.css"><meta name="generator" content="Hexo 6.1.0"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">缓存</h1><a id="logo" href="/.">OverTheRainbow</a><p class="description"></p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a><a href="/atom.xml"><i class="fa fa-rss"> 订阅</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">缓存</h1><div class="post-meta">2022-05-09</div><div class="post-content"><h2 id="缓存"><a href="#缓存" class="headerlink" title="缓存"></a>缓存</h2><h3 id="缓存分类和应用场景"><a href="#缓存分类和应用场景" class="headerlink" title="缓存分类和应用场景"></a>缓存分类和应用场景</h3><h4 id="本地缓存"><a href="#本地缓存" class="headerlink" title="本地缓存"></a>本地缓存</h4><p>应用和缓存在同一个进程内部，请求缓存非常快速，没有过多的网络开销。</p>
+<p>本地缓存有多种实现方式：HashMap&#x2F;ConcurrentHashMap、Ehcache、Guava Cache、Caffeine 等。</p>
+<blockquote>
+<p><strong>这类缓存实现，优点是能直接在heap区内读写，最快也最方便；缺点同样是受heap区域影响，缓存的数据量非常有限，同时缓存时间受GC影响。主要满足单机场景下的小数据量缓存需求，同时对缓存数据的变更无需太敏感感知，如一般配置管理、基础静态数据等场景。</strong></p>
+</blockquote>
+<h4 id="缓存服务"><a href="#缓存服务" class="headerlink" title="缓存服务"></a>缓存服务</h4><p>由与应用分离的缓存组件或服务提供，多个应用可直接共享缓存。</p>
+<h4 id="选型考虑"><a href="#选型考虑" class="headerlink" title="选型考虑"></a>选型考虑</h4><ul>
+<li><p>如果数据量较小，并且不会频繁地增长又清空（这将会导致频繁地垃圾回收），可以选择本地缓存。</p>
+<p>如果需要一些策略的支持，可考虑选用 Caffeine 等方式，否则可以使用 HashMap，并发场景可以考虑 ConcurrentHashMap 。</p>
+</li>
+<li><p>其他情况，可以考虑缓存服务。</p>
+</li>
+</ul>
+<h3 id="清空策略"><a href="#清空策略" class="headerlink" title="清空策略"></a>清空策略</h3><p>在空间不足的情况下，有以下的几种缓存逐出策略。</p>
+<ul>
+<li><p><strong>FIFO (First In First Out)</strong></p>
+<p>先进先出。</p>
+<p>最先进入缓存的数据在缓存空间不够的情况下（超出最大元素限制）会被优先被清除掉，以腾出新的空间接受新的数据。</p>
+</li>
+<li><p><strong>LFU (Less Frequently Used)</strong></p>
+<p>最少使用。</p>
+<p>无论是否过期，根据元素的被使用次数判断（主要比较命中次数），清除使用次数较少的元素释放空间。</p>
+</li>
+<li><p><strong>LRU (Least Recently Used)</strong></p>
+<p><strong>常用策略</strong></p>
+<p>最近最少使用。</p>
+<p>根据元素最后一次被使用的时间戳，清除最远使用时间戳的元素释放空间。</p>
+</li>
+</ul>
+<h3 id="缓存的各项问题及解决方案"><a href="#缓存的各项问题及解决方案" class="headerlink" title="缓存的各项问题及解决方案"></a>缓存的各项问题及解决方案</h3><h4 id="缓存穿透"><a href="#缓存穿透" class="headerlink" title="缓存穿透"></a>缓存穿透</h4><p>缓存和数据库都没有的数据被大量请求，所有的请求都会直接到数据库。</p>
+<p><em>注：穿透，都没有，直接打到数据库。</em></p>
+<p><strong>解决方案：</strong></p>
+<ul>
+<li><p>增加业务层级过滤器，进行合法校验，从而有效拦截大部分不合法的请求。</p>
+<p>例如，使用布隆过滤器，把可能存在的值 hash 到 bitmap 中，一个一定不存在的数据会被这个 bitmap 拦截掉，从而避免了对底层存储系统的查询压力。</p>
+</li>
+<li><p>针对数据库与缓存都没有的数据，对空的结果进行缓存。</p>
+<p>需要将过期时间设置得较短（五分钟内），如果数据库有写入或更新，必须同时刷新缓存。</p>
+</li>
+</ul>
+<h4 id="缓存雪崩"><a href="#缓存雪崩" class="headerlink" title="缓存雪崩"></a>缓存雪崩</h4><p>设置缓存时采用了相同的过期时间，导致缓存在某一时刻同时失效（或较短的时间段内），请求全部转发到数据库，数据库瞬时压力过大而崩溃。</p>
+<p><strong>解决方案：</strong></p>
+<ul>
+<li><p>热点数据设置永不过期。</p>
+<p>如果所有的热点数据在一台缓存服务器上，如果出现任何问题（服务器挂掉，网络问题等），那么所有的热点数据也会雪崩。将热点数据打散分布也可以有效减少这种情况。</p>
+</li>
+<li><p>避免设置相同（或相近）的缓存过期时间，将缓存失效时间分散开。</p>
+</li>
+<li><p>双缓存方式</p>
+<p>数据库数据同步到缓存 A 和 B，A 设置过期时间，B 不设置过期时间，如果 A 为空的时候去读 B，同时异步去更新缓存，但是更新的时候需要同时更新两个缓存。</p>
+</li>
+</ul>
+<h4 id="缓存击穿"><a href="#缓存击穿" class="headerlink" title="缓存击穿"></a>缓存击穿</h4><p>缓存在某个时间点过期的时候，恰好在这个时间点对这个 key 有大量的并发请求过来，导致数据库瞬时压力陡增而崩溃。</p>
+<p><em>注：数据库原本有的数据，但是缓存中没有。</em></p>
+<p><strong>解决方案：</strong></p>
+<ul>
+<li><p>热点数据可以考虑设置为永远不过期。</p>
+</li>
+<li><p>设置互斥锁，只允许一个请求通过，并去数据库拉取数据，之后释放锁。</p>
+<p>获取锁之后，不管成功或失败，都应该释放锁。</p>
+</li>
+</ul>
+<blockquote>
+<p>缓存穿透是指数据库原本就没有的数据，请求如入无人之境，直奔数据库。</p>
+<p>而缓存击穿，则是指数据库有数据，缓存也本应该有数据，但是突然缓存过期了，这层保护屏障被击穿了，请求直奔数据库。</p>
+<p>缓存雪崩则是指很多缓存同一个时间失效了，流量全部涌入数据库，造成数据库极大的压力。</p>
+</blockquote>
+<h3 id="参考"><a href="#参考" class="headerlink" title="参考"></a>参考</h3><p>- [1] <a target="_blank" rel="noopener" href="https://tech.meituan.com/2017/03/17/cache-about.html">美团技术团队-缓存那些事</a></p>
+<p>- [2] <a target="_blank" rel="noopener" href="https://segmentfault.com/a/1190000039688578">秦怀杂货店-缓存穿透，缓存击穿和缓存雪崩的区别以及解决方案</a></p>
+<p>- [3] <a target="_blank" rel="noopener" href="https://tech.meituan.com/2016/12/02/performance-tunning.html">美团技术团队-常见性能优化策略的总结</a></p>
+</div><div class="tags"><a href="/tags/缓存"><i class="fa fa-tag">缓存</i></a><a href="/tags/技术"><i class="fa fa-tag">技术</i></a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form class="search-form" action="//www.google.com/search" method="get" accept-charset="utf-8" target="_blank"><input type="text" name="q" maxlength="20" placeholder="Search"/><input type="hidden" name="sitesearch" value="http://example.com"/></form></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/%E7%BC%93%E5%AD%98/" style="font-size: 15px;">缓存</a> <a href="/tags/%E6%8A%80%E6%9C%AF/" style="font-size: 15px;">技术</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2022/05/09/%E7%BC%93%E5%AD%98/">缓存</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul></ul><a href="http://www.example1.com/" title="site-name1" target="_blank">site-name1</a><ul></ul><a href="http://www.example2.com/" title="site-name2" target="_blank">site-name2</a><ul></ul><a href="http://www.example3.com/" title="site-name3" target="_blank">site-name3</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2022 <a href="/." rel="nofollow">OverTheRainbow.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=1.0.0" async></script><script type="text/javascript" src="//cdn.jsdelivr.net/gh/fancyapps/fancybox/dist/jquery.fancybox.min.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=1.0.0" async></script><link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox/dist/jquery.fancybox.min.css"><script type="text/javascript" src="/js/copycode.js?v=1.0.0" successtext="复制成功!"></script><link rel="stylesheet" type="text/css" href="/css/copycode.css?v=1.0.0"><script type="text/javascript" src="/js/codeblock-resizer.js?v=1.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=1.0.0"></script></div></body></html>
