@@ -1,0 +1,604 @@
+<!DOCTYPE html><html lang="zh-CN"><head><meta http-equiv="content-type" content="text/html; charset=utf-8"><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport"><meta content="yes" name="apple-mobile-web-app-capable"><meta content="black-translucent" name="apple-mobile-web-app-status-bar-style"><meta content="telephone=no" name="format-detection"><meta name="description" content=""><title>JVM虚拟机浅析 | OverTheRainbow</title><link rel="stylesheet" type="text/css" href="/css/style.css?v=1.0.0"><link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/npm/normalize.css/normalize.min.css"><link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/npm/purecss/build/pure-min.min.css"><link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/npm/purecss/build/grids-responsive-min.css"><link rel="stylesheet" href="//cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css"><script type="text/javascript" src="//cdn.jsdelivr.net/npm/jquery/dist/jquery.min.js"></script><link rel="icon" mask="" sizes="any" href="/favicon.ico"><link rel="Shortcut Icon" type="image/x-icon" href="/favicon.ico"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="apple-touch-icon-precomposed" href="/apple-touch-icon.png"><script type="text/javascript" src="//cdn.jsdelivr.net/npm/clipboard/dist/clipboard.min.js"></script><script type="text/javascript" src="//cdn.jsdelivr.net/gh/codeseven/toastr/build/toastr.min.js"></script><link rel="stylesheet" href="//cdn.jsdelivr.net/gh/codeseven/toastr/build/toastr.min.css"><meta name="generator" content="Hexo 6.1.0"></head><body><div class="body_container"><div id="header"><div class="site-name"><h1 class="hidden">JVM虚拟机浅析</h1><a id="logo" href="/.">OverTheRainbow</a><p class="description"></p></div><div id="nav-menu"><a class="current" href="/."><i class="fa fa-home"> 首页</i></a><a href="/archives/"><i class="fa fa-archive"> 归档</i></a><a href="/about/"><i class="fa fa-user"> 关于</i></a><a href="/atom.xml"><i class="fa fa-rss"> 订阅</i></a></div></div><div class="pure-g" id="layout"><div class="pure-u-1 pure-u-md-3-4"><div class="content_container"><div class="post"><h1 class="post-title">JVM虚拟机浅析</h1><div class="post-meta">2022-05-10</div><div class="post-content"><h2 id="深入理解JVM虚拟机"><a href="#深入理解JVM虚拟机" class="headerlink" title="深入理解JVM虚拟机"></a>深入理解JVM虚拟机</h2><p><em>世界上没有最好的编程语言，只有最适用于具体应用场景的编程语言。</em></p>
+<blockquote>
+<p>JVM：跨语言的平台</p>
+<p>只要经过编译之后的字节码文件，遵循JVM虚拟机的标准，JVM就可以解释运行。</p>
+</blockquote>
+<h3 id="JVM架构模型"><a href="#JVM架构模型" class="headerlink" title="JVM架构模型"></a>JVM架构模型</h3><p>JAVA编译器输入的指令流基本上是一种基于<strong>栈的指令集架构</strong>，另外一种指令集架构则是基于<strong>寄存器的指令集架构</strong>。</p>
+<ul>
+<li>基于栈式架构的特点<ul>
+<li>设计和实现更简单，<strong>适用于资源受限的系统</strong>；</li>
+<li><strong>避开了寄存器的分配难题，使用零地址指令方式分配</strong>；</li>
+<li>指令流中的指令大部分是零地址指令，其执行过程依赖于操作栈。<strong>指令集更小，编译器更容易实现</strong>；</li>
+<li>不需要硬件支持，<strong>可移植性更好，更好实现跨平台</strong>；</li>
+</ul>
+</li>
+<li>基于寄存器架构的特点<ul>
+<li>典型的应用是X86的二进制指令集；</li>
+<li><strong>指令集架构完全依赖硬件，可移植性差</strong>；</li>
+<li><strong>性能优秀和执行更高效</strong>；</li>
+<li>花费更少的指令去完成一项操作；</li>
+<li>在大部分情况下，基于寄存器架构的指令集往往都以一地址指令、二地址指令和三地址指令为主，而基于栈式架构的指令集却是以零地址指令为主；</li>
+</ul>
+</li>
+</ul>
+<p>由于跨平台性的设计，Java的指令都是根据栈来设计的。不同平台CPU架构不同（ARM，X86），所以不能设计为基于寄存器的。</p>
+<ul>
+<li><p>优点：跨平台，指令集小，编译器容易实现</p>
+</li>
+<li><p>缺点：性能下降，实现同样的功能需要更多的指令（指令集小，完成同一个任务所需的指令数多）</p>
+</li>
+</ul>
+<p><em>所谓的JVM调优是在方法区和堆（99%）中进行（栈不需要垃圾回收，因为栈中内容即取即用）。</em></p>
+<h3 id="Java内存区域与内存溢出异常"><a href="#Java内存区域与内存溢出异常" class="headerlink" title="Java内存区域与内存溢出异常"></a>Java内存区域与内存溢出异常</h3><h4 id="运行时数据区域"><a href="#运行时数据区域" class="headerlink" title="运行时数据区域"></a>运行时数据区域</h4><p>Java虚拟机在执行Java程序的过程中会把它所管理的内存划分为若干个不同的数据区域。这些区域有各自的用途，以及创建和销毁的时间，有的区域随着虚拟机进程的启动而一直存在，有些区域则是依赖用户线程的启动和结束而建立和销毁。</p>
+<p><img src="https://psvm.oss-cn-beijing.aliyuncs.com/img/%E8%BF%90%E8%A1%8C%E6%97%B6%E6%95%B0%E6%8D%AE%E5%8C%BA1.png" alt="运行时数据区1"></p>
+<p><img src="https://psvm.oss-cn-beijing.aliyuncs.com/img/%E8%BF%90%E8%A1%8C%E6%97%B6%E6%95%B0%E6%8D%AE%E5%8C%BA2.png" alt="运行时数据区2"></p>
+<h4 id="程序计数器"><a href="#程序计数器" class="headerlink" title="程序计数器"></a>程序计数器</h4><ul>
+<li><p>程序计数器是一块较小的内存空间，它可以看作是当前线程所执行的字节码的行号指示器。</p>
+</li>
+<li><p>JVM字节码解释器工作时就是通过改变这个计数器的值来选取下一条需要执行的字节码指令，它是程序控制流的指示器，<strong>分支、循环、跳转、异常处理、线程恢复</strong>等基础功能都需要依赖这个计数器来完成。 </p>
+</li>
+<li><p>JVM规范中，线程都有一个独立的程序计数器（私有），各线程之间计数器互不影响。</p>
+</li>
+<li><p>CPU中也有程序计数器，为物理设备，而JVM中的程序计数器为一块较小的内存空间。</p>
+</li>
+<li><p><strong>这个区域是JAVA运行时数据区域唯一不会发生OOM的区域。</strong></p>
+</li>
+<li><p><em>如果正在执行的是Native方法，则这个计数器为空。</em></p>
+</li>
+</ul>
+<h4 id="JAVA虚拟机栈"><a href="#JAVA虚拟机栈" class="headerlink" title="JAVA虚拟机栈"></a>JAVA虚拟机栈</h4><p><strong>同程序计数器，线程私有，生命周期与线程相同。</strong></p>
+<blockquote>
+<p>每个<strong>方法</strong>被执行的时候，Java虚拟机都会同步创建一个栈帧（Stack Frame）用于存储局部变量表、操作数栈、动态连接、方法出口等信息。</p>
+<p>每一个方法被调用直至执行完毕的过程，就对应着一个栈帧在虚拟机栈中从入栈到出栈的过程。</p>
+</blockquote>
+<p><strong>栈帧：</strong></p>
+<ul>
+<li><p>局部变量表</p>
+<ul>
+<li><p>一组变量值存储空间，用于存放方法参数和方法内部定义的局部变量</p>
+<ul>
+<li><p><strong>编译期可知</strong>的各种Java虚拟机<strong>基本数据类型</strong>（boolean，byte，char，short，int，float，long，double），对象引用（reference类型，指明对象地址），returnAddress类型（指向了一条字节码指令的地址）；</p>
+<blockquote>
+<p>在Java程序编译为Class文件时,就在方法的Code属性中的max_locals数据项中确定了该方法所需分配的局部变量表的最大容量。(最大Slot数量)</p>
+</blockquote>
+</li>
+<li><p><strong>局部变量槽（slot）</strong></p>
+<ul>
+<li><p>局部变量表最基本的存储单元；</p>
+</li>
+<li><p>32位以内的类型只占用一个slot（包括returnAddress类型），64位的类型（long和double）占用两个slot（<strong>HotSpot虚拟机</strong>）；</p>
+<p><strong>！！slot真正使用多大的内存空间取决于具体的虚拟机实现！！</strong></p>
+<blockquote>
+<p>byte、short、char、float在存储前被转换为int，boolean也被转换为int，0表示false，非0表示true</p>
+</blockquote>
+</li>
+<li><p>JVM会为局部变量表中的每一个slot都分配一个访问索引，通过这个索引即可成功访问到局部变量表中指定的局部变量值（访问64位类型只需要第一个slot的索引）；</p>
+</li>
+<li><p>栈帧中的局部变量表中的槽位是可以重复利用的，如果一个局部变量过了其作用域（当前字节码<strong>PC计数器</strong>的值已经超出了某个变量的作用域），那么在其作用域之后申明的新的局部变量就很有可能会复用过期局部变量的槽位，从而达到节省资源的目的；</p>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p>局部变量表所需内存空间在编译期间完成分配；</p>
+</li>
+<li><p>局部变量表中的变量不可直接使用，必须通过相关指令将其加载至操作数栈中作为操作数使用；</p>
+</li>
+<li><p><strong>在栈帧中，与性能调优关系最为密切的部分就是局部变量表。</strong>在方法执行时，虚拟机使用局部变量表完成方法的传递；</p>
+</li>
+<li><p><strong>局部变量表中的变量也是重要的垃圾回收根节点，只要被局部变量表中直接或间接引用的对象都不会被回收；</strong></p>
+</li>
+</ul>
+</li>
+<li><p>操作数栈</p>
+<ul>
+<li><p><strong>主要用于保存计算过程的中间结果，同时作为计算过程中变量临时的存储空间。</strong></p>
+<blockquote>
+<p>同局部变量表一样，操作数栈的最大深度也在编译的时候写入到方法的Code属性的max_stacks数据项中。</p>
+<p>操作数栈的每一个元素可以是任意Java数据类型，32位的数据类型占一个栈容量，64位的数据类型占2个栈容量，且在方法执行的任意时刻，操作数栈的深度都不会超过max_stacks中设置的最大值。</p>
+</blockquote>
+</li>
+<li><p><strong>Java虚拟机的解释执行引擎称为“基于栈的执行引擎”，其中所指的“栈”就是操作数栈。</strong></p>
+<p>操作数栈就是jvm执行引擎的一个工作区，当一个方法开始执行的时候，一个新的栈帧也会随之被创建出来，这个方法的操作数栈是空的。在方法的执行过程中，会有各种字节码指令向操作数栈中写入和提取内容，也就是入栈出栈操作。</p>
+</li>
+</ul>
+</li>
+<li><p>动态连接</p>
+<ul>
+<li>每个栈帧都包含一个指向运行时常量池中该栈帧所属方法的引用，持有这个引用是为了支持方法调用过程中的动态连接；</li>
+<li>字节码中的方法调用指令就以常量池中指向方法的符号引用为参数，这些符号引用一部分会在类加载阶段或第一次使用的时候转化为直接引用，这种转化称为静态解析。另外一部分将在每一次的运行期间转化为直接引用，这部分称为动态连接；</li>
+</ul>
+</li>
+<li><p>方法出口</p>
+<p><strong>存放调用该方法的PC计数器的值。</strong></p>
+<ul>
+<li>正常完成出口<ul>
+<li>当前方法正常完成，没有抛出任何异常；</li>
+<li><strong>调用者的pc计数器的值作为返回地址，即调用该方法的指令的下一条指令的地址；</strong></li>
+<li>本质上，方法的退出就是当前栈帧出栈的过程。此时，需要恢复上层方法的局部变量表、操作数栈、将返回值也如调用者栈帧的操作数栈、设置PC寄存器值等，让调用者方法继续执行下去；</li>
+</ul>
+</li>
+<li>异常完成出口<ul>
+<li>方法执行过程中遇到异常，并且这个异常在方法体内部没有得到处理，导致方法退出；</li>
+</ul>
+</li>
+</ul>
+<blockquote>
+<p>方法退出过程实际上就等同于把当前栈帧出栈，因此退出可以执行的操作有：</p>
+<ul>
+<li>恢复上层方法的局部变量表和操作数栈；</li>
+<li>把返回值（如果有的话）压如调用者的操作数栈中；</li>
+<li>调整PC计数器的值以指向方法调用指令后的下一条指令；</li>
+</ul>
+<p>一般来说，方法正常退出时，调用者的PC计数值可以作为返回地址，栈帧中可能保存此计数值。而方法异常退出时，返回地址是通过异常处理器表确定的，栈帧中一般不会保存此部分信息。</p>
+</blockquote>
+</li>
+<li><p>附加信息</p>
+<ul>
+<li>栈帧中还允许携带与Java虚拟机实现相关的一些附加信息。例如，对程序调试提供支持的信息。</li>
+</ul>
+</li>
+</ul>
+<h4 id="本地方法栈"><a href="#本地方法栈" class="headerlink" title="本地方法栈"></a>本地方法栈</h4><p><em>Native Method Stacks</em></p>
+<ul>
+<li><p>线程私有；</p>
+</li>
+<li><p>与虚拟机栈的功能类似，<strong>本地方法栈</strong>为虚拟机使用到的<strong>本地方法</strong>服务，虚拟机栈为虚拟机执行Java方法服务，管理Java方法的调用；</p>
+</li>
+<li><p>本地方法由C语言实现；</p>
+</li>
+<li><p>并非所有的JVM都支持本地方法；</p>
+</li>
+</ul>
+<h4 id="Java堆"><a href="#Java堆" class="headerlink" title="Java堆"></a>Java堆</h4><p>一个进程对应一个JVM实例，同时包含多个线程，这些线程<strong>共享方法区和堆</strong>，每个线程<strong>独有程序计数器、本地方法栈和虚拟机栈</strong>。</p>
+<ul>
+<li><p>在虚拟机启动时创建（大小确定），所有线程共享；</p>
+</li>
+<li><p>JVM管理的内存中最大一块；</p>
+</li>
+<li><p>存放对象实例 -&gt; 唯一目的；</p>
+</li>
+<li><p>Java堆是垃圾收集器管理的内存区域（GC执行垃圾回收的重点区域）；</p>
+</li>
+<li><p>从内存分配的角度</p>
+<p>所有线程共享的Java堆中可以划分出多个<strong>线程私有</strong>的分配缓冲区（Thread Local Allocation Buffer，TLAB），以<strong>提升对象分配时的效率</strong>。</p>
+<p><em>将Java堆细分的目的只是为了更好地回收内存</em></p>
+</li>
+<li><p>Java堆可以处于物理上不连续的内存空间，逻辑上连续</p>
+<p>对于大对象（如数组），（多数虚拟机）可能会要求存储空间物理上连续（实现简单，存储高效）；</p>
+</li>
+</ul>
+<h4 id="方法区"><a href="#方法区" class="headerlink" title="方法区"></a>方法区</h4><ul>
+<li>各线程共享，用于存储已被虚拟机加载的类型信息、常量、静态变量、即时编译器编译后的代码缓存等数据；</li>
+<li>在JVM启动时即被创建，并且它的实际的物理内存空间中和Java堆区一样都可以是不连续的；</li>
+</ul>
+<h3 id="垃圾收集器与内存分配策略"><a href="#垃圾收集器与内存分配策略" class="headerlink" title="垃圾收集器与内存分配策略"></a>垃圾收集器与内存分配策略</h3><h4 id="HotSpot的算法细节实现"><a href="#HotSpot的算法细节实现" class="headerlink" title="HotSpot的算法细节实现"></a>HotSpot的算法细节实现</h4><h5 id="根节点枚举"><a href="#根节点枚举" class="headerlink" title="根节点枚举"></a>根节点枚举</h5><ul>
+<li><p>必须暂停用户线程，导致STW（迄今为止的所有垃圾收集器）。</p>
+<p>必须在在一个能保障一致性的快照中才得以进行，不会出现分析过程中，根节点集合的对象引用关系还在不断变化的情况，否则无法保证分析结果准确性。</p>
+</li>
+<li><p>使用一组称为OopMap的数据结构，虚拟机可以直接知道哪些地方存放着对象引用。</p>
+<p>OopMap中存储了两种对象引用：</p>
+<ul>
+<li><p>对象内引用</p>
+<p>在类加载完的时候，HotSpot就把对象内什么偏移量上是什么类型的数据计算出来。</p>
+</li>
+<li><p>栈、寄存器中引用</p>
+<p>在即时编译过程中，也会在特定的位置记录下栈和寄存器中哪些位置是引用。这样，GC在扫描的时候就知道这些信息了。</p>
+</li>
+</ul>
+</li>
+</ul>
+<p>通过OopMap垃圾收集器就可以更快的找到GC Roots，并且更快的完成GC Roots的枚举。</p>
+<blockquote>
+<p>准确式内存管理</p>
+<p>虚拟机可以知道内存中某个位置的数据具体是什么类型。</p>
+<p>如内存中有一个32bit的整数123456，虚拟机将有能力分辨出它到底是一个指向了123456的内存地址的引用类型还是一个数值为123456的整数</p>
+<p>准确分辨出哪些内存是引用类型，这也是在垃圾收集时准确判断堆上的数据是否还可能被使用的前提。</p>
+</blockquote>
+<h5 id="安全点"><a href="#安全点" class="headerlink" title="安全点"></a>安全点</h5><h4 id="经典垃圾收集器"><a href="#经典垃圾收集器" class="headerlink" title="经典垃圾收集器"></a>经典垃圾收集器</h4><h5 id="CMS收集器"><a href="#CMS收集器" class="headerlink" title="CMS收集器"></a>CMS收集器</h5><p><em>CMS（Concurrent Mark Sweep）</em></p>
+<p>以获取最短回收停顿时间为目标。</p>
+<p><strong>运作过程：</strong></p>
+<ul>
+<li><p><strong>初始标记（CMS initial mark）</strong></p>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> Stop The World</li>
+</ul>
+<p>标记GC Roots能直接关联到的对象，速度很快。</p>
+</li>
+<li><p><strong>并发标记（CMS concurrent mark）</strong></p>
+<p>从GC Roots的直接关联对象开始遍历整个对象图，耗时较长，不需要停顿用户线程，可与垃圾收集线程一起并发运行。</p>
+</li>
+<li><p><strong>重新标记（CMS remark）</strong></p>
+<ul>
+<li><p><input checked="" disabled="" type="checkbox"> 
+Stop The World</p>
+</li>
+<li><p>修正并发标记期间，因用户程序继续运作而导致标记产生变动的那一部分对象的标记记录。</p>
+</li>
+<li><p>停顿时间相比初始标记阶段稍长，但远比并发标记阶段时间短。</p>
+</li>
+</ul>
+</li>
+<li><p><strong>并发清除（CMS concurrent sweep）</strong></p>
+<ul>
+<li>清理删除掉标记阶段判断的已经死亡的对象。</li>
+<li>并不需要移动存活对象，可与用户线程同时并发。</li>
+</ul>
+</li>
+</ul>
+<p><strong>由于在整个过程中耗时最长的并发标记和并发清除阶段中，垃圾收集器线程都可以与用户线程一 起工作，所以从总体上来说，CMS收集器的内存回收过程是与用户线程一起并发执行的。</strong></p>
+<p><strong>缺点：</strong></p>
+<ul>
+<li><p>对处理器资源非常敏感。</p>
+<ul>
+<li><p>并发阶段，虽不会导致用户线程停顿，但却会因为占用了一部分线程而导致应用程序变慢，降低总吞吐量。</p>
+</li>
+<li><p>CMS默认启动的回收线程数：(处理器核心数量 + 3) &#x2F;4</p>
+<p>处理器核心数在4个或以上，并发回收时垃圾收集线程占用不超过25%；当处理器核心数量不足4个时，CMS对用户程序的影响就可能变得很大。</p>
+</li>
+</ul>
+<p><strong>解决方案：</strong></p>
+<p>增量式并发收集器（Incremental Concurrent Mard Sweep&#x2F;i-CMS）</p>
+<ul>
+<li>在并发标记和并发清除的时候让收集器线程、用户线程交替运行，尽量减少垃圾收集线程的独占资源的时间，这样整个垃圾收集的过程会更长，但对用户程序的影响就会显得较少一些，直观感受是速度变慢的时间更多了，但速度下降幅度就没有那么明显。</li>
+<li>效果一般，JDK7开始，i-CMS被声明为<code>deprecated</code>，JDK9后完全废弃。</li>
+</ul>
+</li>
+<li><p>由于CMS无法处理浮动垃圾（Floating Garbage），有可能出现Con-current Mode Failure失败进而导致另一次完全Stop The World的Full GC的产生。</p>
+<p><strong>浮动垃圾：</strong>并发标记和并发清除阶段用户线程还在继续运行，不可避免会有新的垃圾对象产生在标记过程结束后，CMS无法在当次收集中处理掉，只好留待下一次垃圾收集时再清理。</p>
+<p>CMS收集器不能像其他收集器等待老年代几乎完全被填满再进行收集，必须预留一部分空间供并发收集时的程序运作使用。</p>
+<p>JDK5：CMS收集器当老年代使用了68%空间后会被激活。如实际应用中老年代增长并不是太快，可以适当调高<code>CMSInitiatingOccy-pancyFraction</code>值来提高CMS的触发百分比，降低内存回收频率，获取更好的性能。</p>
+<p>JDK6：CMS启动阈值默认为92%，可能导致，如果CMS运行期间预留的内存无法满足程序分配新对象的需要（剩余的8%的空间不够），此时虚拟机将冻结用户线程的执行，临时启用Serial Old收集器来重新进行老年代的垃圾收集，此举将会导致更长的停顿时间。</p>
+<p>该参数设置太高将会导致大量的并发失败产生，性能反而降低。</p>
+</li>
+<li><p>基于“标记-清除”算法，收集结束时会有大量空间碎片产生。</p>
+<p>空间碎片过多，会导致无法找到足够大的连续空间来分配当前对象，从而导致提前出发一次Full GC的情况。</p>
+<p><code>+UseCMS-CompactAtFullCollection</code>开关参数（默认开启，从JDK9开始废弃），用于在CMS收集器不得不进行Full GC时开启内存碎片的合并整理过程。由于这个内存整理必须移动存活对象，（在Shenandoah和ZGC出现前）是无法并发的。</p>
+<p>虽然解决了空间碎片问题，但是停顿时间会变长。</p>
+<p>另一参数<code>CMSFullGCsBefore-Compaction</code>（从JDK9开始废弃），这个参数的作用是要求CMS收集器在执行过若干次（数量由参数值决定）不整理空间的Full GC之后，下一次进入Full GC前会先进行碎片整理（默认值为0，表示每次进入Full GC时都进行碎片整理）。</p>
+</li>
+</ul>
+<h5 id="Garbage-First收集器"><a href="#Garbage-First收集器" class="headerlink" title="Garbage First收集器"></a>Garbage First收集器</h5><p><em>G1收集器</em></p>
+<p>JDK9：G1取代Parallel Scavenge加Parallel Old组合。CMS被声明为<code>Deprecate</code>。</p>
+<p><strong>官方目标：在延迟可控的情况下，获得尽可能高的吞吐量。</strong></p>
+<p><strong>停顿时间模型：</strong>指定在一个长度为M毫秒的时间片段内，消耗在垃圾收集上的时间大概率不超过N毫秒。</p>
+<p><strong>软实时：</strong>统计意义上的实时，在一定的时间内尽可能的完成垃圾收集工作，并不绝对。</p>
+<p>G1可以面向堆内存任何部分来组成回收集（CSet，Collection Set）进行回收，哪块内存中存放的垃圾数量最多，则其回收收益最大（Mixed GC模式）。</p>
+<p>把连续的Java堆划分为多个大小相等的独立区域（Region），每一个Region都可以根据需要扮演任何一类空间。再根据需要采用不同的处理方式收集对各区域进行垃圾收集。</p>
+<p>Region大小可以通过<code>G1HeapRegionSize</code>设定（取值范围1MB~32MB）。</p>
+<p><strong>Humongous：</strong>专门用于存储大对象（G1认为只要对象大小超过一个Region容量的一半）。超级大对象（超过整个Region容量）将会被存放于N个连续的Humongous Region中。</p>
+<p>G1的大多数行为都把Humongous Region作为老年代的一部分来看待。</p>
+<p><strong>G1能建立可预测的停顿时间模型的原因：</strong></p>
+<p>将Region作为单次回收的最小单元，即每次收集到的内存空间都是Region大小的整数倍，这样可以有计划地避免在整个Java堆中进行全区域的垃圾收集。</p>
+<p>让G1收集器去跟踪各个Region里面的垃圾堆积的价值大小（回收所获得的空间大小以及回收所需时间的经验值），并在后台维护一个优先级列表，每次根据用户设定允许的收集停顿时间（使用参数<code>MaxGCPauseMillis</code>指定，默认200毫秒），优先处理回收价值收益最大的那些Region，<strong>这种使用Region划分内存空间，以及具有优先级的区域回收方式，保证了G1收集器在有限的时间内获取尽可能高的收集效率。</strong></p>
+<p><strong>有待解决的问题：</strong></p>
+<ul>
+<li><p>Region里存在的跨Region引用对象如何解决？</p>
+<p>使用记忆集避免全栈作为GC Roots扫描。</p>
+<p>G1收集器上记忆集的应用比较复杂，每个Region都维护有自己的记忆集，这些记忆集会记录下别的Region指向自己的指针，并标记这些指针分别在哪些卡页的范围之内。</p>
+<p>G1的记忆集在存储结构的本质上是一种哈希表，Key是别的Region的起始地址，Value是一个集合，里面存储的元素是卡表的索引号。</p>
+<p>这种“双向”的卡表结构（卡表是“我指向谁”，这种结构还记录了“谁指向我”）比原来的卡表实现起来更复杂。</p>
+<p>同时由于Region数量比传统收集器的分代数量明显要多得多，因此G1收集器要比其他的传统垃圾收集器有着更高的内存占用负担。</p>
+<p>根据经验，G1至少要耗费大约相当于Java堆容量10%至20%的额外内存来维持收集器工作。 </p>
+</li>
+<li><p>在并发标记阶段如何保证收集线程与用户线程互不干扰运行？</p>
+<p>首先要解决的是用户线程改变对象引用关系时，必须保证其不能打破原本的对象图结构，导致标记结果出现失误。</p>
+<p>上述问题，G1收集器通过原始快照（SATB）算法实现，CMS收集器采用增量更新算法实现。</p>
+<p>垃圾收集对用户线程的影响还体现在回收过程中新创建对象的内存分配上，G1为每一个Region设计了两个名为TAMS（Top at Mark Start）的指针，把Region中的一部分空间划分出来用于并发回收过程中的新对象分配，并发回收时新分配的对象地址都必须要在这两个指针位置以上。</p>
+<p>G1收集器默认在这个地址以上的对象是被隐式标记过的，即默认它们是存活的，不纳入回收范围。</p>
+<p>如果内存回收的速度赶不上内存分配的速度，G1收集器也要被迫冻结用户线程执行，导致Full GC而产生长时间Stop The World。</p>
+</li>
+<li><p>怎样建立起可靠的停顿预测模型？</p>
+<p><strong>衰减均值：</strong>会比普通的平均值更容易受到新数据的影响，平均值代表整体平均状态，但衰减平均值更准确地代表最近的平均状态。</p>
+<p>G1收集器的停顿预测模型是以衰减均值（Decaying Average）为理论基础来实现的，在垃圾收集过程中，G1收集器会记录每个Region的回收耗时、每个Region记忆集里的脏卡数量等各个可测量的步骤花费的成本，并分析得出平均值、标准偏差、置信度等统计信息。</p>
+<p>换句话说，Region的统计状态越新越能决定其回收的价值。然后通过这些信息预测现在开始回收的话，由哪些Region组成回收集才可以在不超过期望停顿时间的约束下获得最高的收益。</p>
+</li>
+</ul>
+<p><strong>G1收集器的运作过程：</strong></p>
+<p>除并发标记阶段外，其余阶段都需要暂停用户线程。</p>
+<ul>
+<li><p><strong>初始标记（Initial Marking）</strong></p>
+<ul>
+<li><p>标记一下GC Roots能直接关联到的对象，并且修改TAMS指针的值（用户线程并发运行时，能正确地在可用的Region中分配新的对象）。</p>
+</li>
+<li><p><strong>需要停顿线程</strong>，但耗时很短，借用Minor GC的时候同步完成。</p>
+</li>
+</ul>
+</li>
+<li><p><strong>并发标记（Concurrent Marking）</strong></p>
+<ul>
+<li><p>从GC Root开始对堆中的对象进行可达性分析，</p>
+</li>
+<li><p>递归扫描整个堆里的对象图，找出要回收的对象，</p>
+</li>
+<li><p>耗时较长，可与用户程序并发执行，</p>
+</li>
+<li><p>对象图扫描完成后，重新处理SATB记录下的在并发时有引用变动的对象。</p>
+</li>
+</ul>
+</li>
+<li><p><strong>最终标记（Final Marking）</strong></p>
+<ul>
+<li><strong>短暂暂停用户线程</strong>，处理并发阶段结束后仍遗留下来的最后那少量的SATB记录。</li>
+</ul>
+</li>
+<li><p><strong>筛选回收（Live Data Counting and Evacuation）</strong></p>
+<ul>
+<li><p>更新Region的统计数据，并对各个Region的回收价值和成本进行排序。</p>
+</li>
+<li><p>根据用户期望的停顿时间制定回收计划。</p>
+<p><strong>可以：</strong>自由选择任意多个Region构成回收集，将决定回收的那部分Region的存活对象复制到空的Region中，再清理掉整个旧Region的全部空间。</p>
+</li>
+<li><p>涉及存活对象的移动，<strong>必须暂停用户线程</strong>。</p>
+</li>
+<li><p>多条收集器线程并行完成。</p>
+</li>
+</ul>
+</li>
+</ul>
+<p>G1默认停顿用户线程的目标时间为200ms，如果将停顿目标时间调得非常低（如20ms），则可能导致每次选出来的回收集只占堆内存的很小一部分，垃圾收集速度慢于分配器分配速度，垃圾逐渐堆积。</p>
+<p>最终引发Full GC降低性能。</p>
+<p>一般一两百或两三百毫秒较为合理。</p>
+<p><strong>垃圾收集器设计思路</strong></p>
+<ul>
+<li>G1之前：追求一次把整个Java堆全部清理干净。</li>
+<li>G1开始：能够应付应用的内存分配速率（Allocation Rate）。</li>
+</ul>
+<h5 id="CMS对比G1"><a href="#CMS对比G1" class="headerlink" title="CMS对比G1"></a>CMS对比G1</h5><p><strong>优点：</strong></p>
+<ul>
+<li><p>可指定最大停顿时间，</p>
+</li>
+<li><p>分Region内存布局，</p>
+</li>
+<li><p>按收益动态确定回收集，</p>
+</li>
+<li><p>整体基于标记-整理算法实现，局部（两Region间）基于标记-复制算法实现。</p>
+<p>G1运作期间不会产生内存空间碎片，垃圾收集完成之后能提供规整的可用内存。</p>
+<p>有利于程序长时间运行，在程序为大对象分配内存时不容易因无法找到连续内存空间而提前触发下一次收集。</p>
+</li>
+</ul>
+<p><strong>缺点：</strong></p>
+<ul>
+<li><p>内存占用（Footprint）</p>
+<ul>
+<li><p>G1的卡表实现更为复杂，堆中的每个Region（不论角色），都必须有一份卡表，导致G1的记忆集（和其他内存消耗）可能会占整个堆容量的20%乃至更多内存空间。</p>
+</li>
+<li><p>CMS卡表简单，只有唯一一份，只需要处理老年代到新生代的引用反过来则不需要，由于新生代的对象具有朝生夕灭的不稳定性，引用变化频繁，能省下这个区域的维护开销是很划算的。</p>
+</li>
+</ul>
+</li>
+<li><p>执行负载（Overload）</p>
+<ul>
+<li>CMS用写后屏障来更新维护卡表；而G1除了使用写后屏障来进行同样的（由于G1的卡表结构复杂，其实是更烦琐的）卡表维护操作外，为了实现原始快照搜索（SATB）算法，还需要使用写前屏障来跟踪并发时的指针变化情况。</li>
+<li>相比起增量更新算法，原始快照搜索能够减少并发标记和重新标记阶段的消耗，避免CMS那样在最终标记阶段停顿时间过长的缺点，但是在用户程序运行过程中确实会产生由跟踪引用变化带来的额外负担。</li>
+<li>由于G1对写屏障的复杂操作要比CMS消耗更多的运算资源，所以CMS的写屏障实现是直接的同步操作，而G1就不得不将其实现为类似于消息队列的结构，把写前屏障和写后屏障中要做的事情都放到队列里，然后再异步处理。</li>
+</ul>
+</li>
+</ul>
+<p><strong>总结：</strong></p>
+<p>小内存应用：CMS &gt; G1（大概率）</p>
+<p>容量平衡点：6GB-8GB</p>
+<p>大内存应用：G1 &gt; CMS（大概率）</p>
+<h4 id="低延迟垃圾收集器"><a href="#低延迟垃圾收集器" class="headerlink" title="低延迟垃圾收集器"></a>低延迟垃圾收集器</h4><p>衡量垃圾收集器的重要指标：</p>
+<ul>
+<li>内存占用（Footprint）</li>
+<li>吞吐量（Throughput）</li>
+<li>延迟（Latency）</li>
+</ul>
+<h5 id="Shenandoah收集器"><a href="#Shenandoah收集器" class="headerlink" title="Shenandoah收集器"></a>Shenandoah收集器</h5><p>相比CMS和G1，Shenandoan不仅要进行并发的垃圾标记，还要并发地进行对象清理后的整理动作（这里的并发指和用户线程）。</p>
+<p>G1与Shenandoah有着相似的堆内存布局，在初始标记、并发标记等许多阶段的处理思路上高度一致。</p>
+<ul>
+<li><p>Shenandoah使用基于Region的堆内存布局，Humongous Region存放大对象。</p>
+</li>
+<li><p>默认回收策略：优先处理回收价值大的Region。</p>
+</li>
+</ul>
+<p><strong>不同之处：</strong></p>
+<ul>
+<li><p>Shenandoah支持并发的整理算法（与用户线程）。</p>
+</li>
+<li><p>Shenandoah（目前）是默认不使用分代收集的，不会有专门的新生代或老年代Region的存在。</p>
+</li>
+<li><p>Shenandoan用连接矩阵（Connection Matrix）的全局数据结构来记录跨Region的引用关系。</p>
+<p>降低了处理跨代指针时的记忆集维护消耗。</p>
+<p>降低了伪共享问题的发生概率。</p>
+<p><em>G1中耗费大量内存和计算资源来维护记忆集。</em></p>
+</li>
+</ul>
+<p><strong>工作过程：</strong></p>
+<ul>
+<li><p>初始标记</p>
+<ul>
+<li>标记与GC Roots直接关联的对象（STW）。</li>
+<li>停顿时间与堆大小无关，只与GC Roots的数量相关。</li>
+</ul>
+</li>
+<li><p><strong>并发标记</strong></p>
+<ul>
+<li>遍历对象图，标记出全部可达对象，与用户线程并发。</li>
+<li>时间长短取决于堆中存活对象的数量以及对象图的结构复杂程度。</li>
+</ul>
+</li>
+<li><p>最终标记</p>
+<ul>
+<li>处理剩余的SATB扫描。</li>
+<li>统计出回收价值最高的Region组成回收集。</li>
+<li>短暂STW。</li>
+</ul>
+</li>
+<li><p>并发清理</p>
+<ul>
+<li>清理那些整个区域内连一个存活对象都没有找到的Region（Immediate Garbage Region）。</li>
+</ul>
+</li>
+<li><p><strong>并发回收（核心差异）</strong></p>
+<ul>
+<li>将回收集里的存活对象复制一份到其他未被使用的Region之中。</li>
+<li>与用户线程并发，不需要STW<ul>
+<li>通过读屏障和Brooks Pointers转发指针解决。</li>
+</ul>
+</li>
+<li>运行时间长短取决于回收集的大小。</li>
+</ul>
+</li>
+<li><p>初始引用更新</p>
+<ul>
+<li>引用更新：并发回收阶段复制对象结束后，把堆中所有指向旧对象的引用修正到复制后的新地址。</li>
+<li>初始：</li>
+</ul>
+</li>
+<li><p><strong>并发引用更新</strong></p>
+<ul>
+<li>真正开始进行引用更新操作。</li>
+<li>与用户线程并发执行。</li>
+<li>与并发标记不同，不需要沿对象图搜索，只需要按内存物理地址顺序，线性地搜索出引用类型，将旧值改为新值。</li>
+<li>时间长短取决于内存中涉及的引用数量的多少。</li>
+</ul>
+</li>
+<li><p>最终引用更新</p>
+<ul>
+<li>修正存在于GC Roots中的引用。</li>
+<li>最后一次停顿，停顿时间只与GC Roots的数量相关。</li>
+</ul>
+</li>
+<li><p>并发清理</p>
+<p>此时回收集中的Region已再无存活对象，最后再调用一次并发清理过程来回收这些Region的内存空间。</p>
+</li>
+</ul>
+<p><strong>如何实现对象移动与用户线程并发</strong></p>
+<p>之前，在被移动对象原有的内存上设置保护陷阱，一旦用户程序访问到归属于旧对象的内存空间就会产生自陷中段，进入预设好的异常处理器中，再由其中的代码逻辑把访问转发到复制后的新对象上。</p>
+<ul>
+<li>需要操作系统层面的直接支持。</li>
+<li>导致用户态频繁切换到核心态，代价大。</li>
+</ul>
+<p><strong>Brooks Pointer</strong></p>
+<p>在原有对象内存布局结构最前面统一增加一个新的引用字段，在正常不处于并发移动的情况下，该引用指向对象自己。</p>
+<p><img src="https://psvm.oss-cn-beijing.aliyuncs.com/img/BrooksPointer1.png" alt="Brooks Pointer"></p>
+<p>复制对象完成后，将旧对象的转发指针修改为新对象的地址。</p>
+<p>问题：</p>
+<ul>
+<li><p>每次对象访问时的转发开销。</p>
+</li>
+<li><p>线程竞争问题：</p>
+<ol>
+<li>收集器复制了新的对象副本；</li>
+<li>用户线程更新对象的某个字段；</li>
+<li>收集器线程更新转发指针指向新对象地址；</li>
+</ol>
+<p>按上述顺序，修改并未在新的对象上生效。</p>
+<p>Shenandoah使用CAS来规避上述问题。</p>
+</li>
+</ul>
+<p><strong>Shenandoah收集器的弱项（高运行负担使得吞吐量下降），强项（低延迟时间）。</strong></p>
+<p>实验结果：</p>
+<p><img src="https://psvm.oss-cn-beijing.aliyuncs.com/img/Shenandoah%E5%9C%A8%E5%AE%9E%E9%99%85%E5%BA%94%E7%94%A8%E4%B8%AD%E7%9A%84%E6%B5%8B%E8%AF%95%E6%95%B0%E6%8D%AE.png" alt="Shenandoah在实际应用中的测试数据"></p>
+<h5 id="ZGC收集器"><a href="#ZGC收集器" class="headerlink" title="ZGC收集器"></a>ZGC收集器</h5><p><strong>设计目标</strong></p>
+<ul>
+<li>TB级别的堆内存管理（不可超过4TB，2^42）；</li>
+<li>最大GC Pause不高于10ms；</li>
+<li>最大吞吐率损耗不高于15%；</li>
+</ul>
+<p>与Shenandoah相似，在尽可能对吞吐量影响不大的前提下，实现在任意堆内存大小下都可以将停顿时间限制在十毫秒以内的低延迟。</p>
+<p><strong>基于Region的堆内存布局</strong></p>
+<ul>
+<li>小型Region<ul>
+<li>容量固定2MB，用于放置小于256KB的小对象。</li>
+</ul>
+</li>
+<li>中型Region<ul>
+<li>容量固定为32MB，用于放置大于等于256KB但小于4MB的对象。</li>
+</ul>
+</li>
+<li>大型Region<ul>
+<li>用于放置4MB或以上的大对象；</li>
+<li>容量不固定，可以动态变化，但必须为2MB的整数倍（实际容量有可能小于中型Region）；</li>
+<li>每个大型Region中只会存放一个大对象；</li>
+<li>不会被重分配，代价太大。</li>
+</ul>
+</li>
+</ul>
+<p><strong>并发整理算法的实现—染色指针技术</strong></p>
+<p>不同的标记实现方案：</p>
+<ul>
+<li>直接记录在对象头上，Serial收集器。</li>
+<li>与对象相互独立的数据结构上，G1、Shenandoah收集器（BitMap，堆内存的1&#x2F;64大小）。</li>
+<li>把标记信息记录在引用对象的指针上，ZGC。</li>
+</ul>
+<p>染色指针示意图：</p>
+<p><img src="https://psvm.oss-cn-beijing.aliyuncs.com/img/%E6%9F%93%E8%89%B2%E6%8C%87%E9%92%88%E7%A4%BA%E6%84%8F%E5%9B%BE.png" alt="染色指针示意图"></p>
+<ul>
+<li><p>一旦某个Region的存活对象被移走之后，这个Region立即就能够被释放和重用掉，而不必等待整个堆中所有指向该Region的引用都被修正后才能清理。</p>
+</li>
+<li><p>染色指针可以大幅减少在垃圾收集过程中内存屏障的使用数量。写屏障的目的通常是为了记录对象引用的变动情况。</p>
+<p>ZGC并未使用任何写屏障，只使用了读屏障（不支持分代收集，不存在跨代引用问题）。</p>
+</li>
+<li><p>可扩展，用于记录更多与对象相关的信息。</p>
+</li>
+</ul>
+<p><strong>需要解决的问题</strong></p>
+<p>重新定义内存中某些指针的其中几位，操作系统及处理器是否支持？</p>
+<p>解决方案：虚拟内存映射技术（多重映射）</p>
+<p><strong>ZGC收集器的运作过程</strong></p>
+<ul>
+<li><p>并发标记</p>
+<ul>
+<li><p>包含初始标记、最终标记（短暂停顿）。</p>
+</li>
+<li><p>更新染色指针中的M0、M1标志位。</p>
+</li>
+</ul>
+</li>
+<li><p>并发预备重分配</p>
+<ul>
+<li>统计得出本次收集要清理的Region，组成重分配集（Relocation Set）。</li>
+</ul>
+</li>
+<li><p>并发重分配</p>
+<ul>
+<li>把重分配集中的存活对象复制到新的Region上，并为重分配集中的每个Region维护一个转发表，记录从旧对象到新对象的转向关系。</li>
+<li>指针自愈<ul>
+<li>ZGC收集器能仅从引用上就明确得知一个对象是否处于重分配集之中，</li>
+<li>预置的内存屏障将会截获用户线程此时对位于重分配集中对象的并发访问，</li>
+<li>然后立即根据Region上的转发表记录将访问转发到新复制的对象上，并修正更新该引用的值，使其直接指向新对象。</li>
+<li>好处<ul>
+<li>只有第一次访问旧对象会陷入转发（只慢一次，Shenandoah的转发指针每次都慢）；</li>
+<li>由于染色指针的存在，一旦重分配集中某个Region的存活对象都复制完毕后，这个Region就可以立即释放用于新对象的分配（但是转发表还得留着不能释放掉），哪怕堆中还有很多指向这个对象的未更新指针也没有关系。这些旧指针一旦被使用，它们都是可以自愈的。</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</li>
+<li><p>并发重映射</p>
+<ul>
+<li>修正整个堆中指向重分配集中旧对象的所有引用。</li>
+<li>并不是很迫切的需要，因为旧引用可以自愈。</li>
+<li>主要目的：为了不变慢。</li>
+<li>将该阶段要做的工作，合并到了下一次垃圾收集循环中的并发标记阶段里去完成，反正它们都是要遍历所有对象的，这样合并就节省了一次遍历对象图的开销。</li>
+<li>一旦所有指针都被修正之后，原来记录新旧对象关系的转发表就可以释放掉了。</li>
+</ul>
+</li>
+</ul>
+<p><strong>与Shenandoah类似，ZGC也做到了几乎整个收集过程都全程可并发，短暂停顿也只与GC Roots大小相关而与堆内存大小无关，因而同样实现了任何堆上停顿都小于十毫秒的目标。</strong> </p>
+<p><strong>优缺点</strong></p>
+<p>优点</p>
+<ul>
+<li>无记忆集、分代、卡表（记录新生代和老年代间引用），完全未用到写屏障，给用户线程带来的运行负担相对较小。</li>
+</ul>
+<p>缺点</p>
+<ul>
+<li>对象分配速率不会太高，可能导致产生大量浮动垃圾（加入分代可一定程度上缓解）。</li>
+</ul>
+<h4 id="选择合适的垃圾收集器"><a href="#选择合适的垃圾收集器" class="headerlink" title="选择合适的垃圾收集器"></a>选择合适的垃圾收集器</h4><h5 id="收集器的权衡"><a href="#收集器的权衡" class="headerlink" title="收集器的权衡"></a>收集器的权衡</h5><p>主要关注点：</p>
+<ul>
+<li><p>吞吐量</p>
+<p>数据分析、科学计算类任务，需要尽快算出结果。</p>
+</li>
+<li><p>延迟</p>
+<p>SLA应用，停顿时间直接影响服务质量。</p>
+</li>
+<li><p>垃圾收集的内存占用</p>
+<p>客户端应用或者嵌入式应用。</p>
+</li>
+</ul>
+</div><div class="tags"><a href="/tags/技术"><i class="fa fa-tag">技术</i></a><a href="/tags/JVM"><i class="fa fa-tag">JVM</i></a></div><div class="post-nav"><a class="next" href="/2022/05/09/MySQL%E9%94%81/">MySQL锁相关</a></div></div></div></div><div class="pure-u-1-4 hidden_mid_and_down"><div id="sidebar"><div class="widget"><form class="search-form" action="//www.google.com/search" method="get" accept-charset="utf-8" target="_blank"><input type="text" name="q" maxlength="20" placeholder="Search"/><input type="hidden" name="sitesearch" value="http://example.com"/></form></div><div class="widget"><div class="widget-title"><i class="fa fa-folder-o"> 分类</i></div></div><div class="widget"><div class="widget-title"><i class="fa fa-star-o"> 标签</i></div><div class="tagcloud"><a href="/tags/MySQL/" style="font-size: 15px;">MySQL</a> <a href="/tags/%E9%94%81/" style="font-size: 15px;">锁</a> <a href="/tags/%E6%8A%80%E6%9C%AF/" style="font-size: 15px;">技术</a> <a href="/tags/%E7%BC%93%E5%AD%98/" style="font-size: 15px;">缓存</a> <a href="/tags/JVM/" style="font-size: 15px;">JVM</a></div></div><div class="widget"><div class="widget-title"><i class="fa fa-file-o"> 最近文章</i></div><ul class="post-list"><li class="post-list-item"><a class="post-list-link" href="/2022/05/10/%E6%B7%B1%E5%85%A5%E7%90%86%E8%A7%A3JVM%E8%99%9A%E6%8B%9F%E6%9C%BA/">JVM虚拟机浅析</a></li><li class="post-list-item"><a class="post-list-link" href="/2022/05/09/MySQL%E9%94%81/">MySQL锁相关</a></li><li class="post-list-item"><a class="post-list-link" href="/2022/05/09/%E7%BC%93%E5%AD%98/">缓存</a></li></ul></div><div class="widget"><div class="widget-title"><i class="fa fa-external-link"> 友情链接</i></div><ul></ul><a href="http://www.example1.com/" title="site-name1" target="_blank">site-name1</a><ul></ul><a href="http://www.example2.com/" title="site-name2" target="_blank">site-name2</a><ul></ul><a href="http://www.example3.com/" title="site-name3" target="_blank">site-name3</a></div></div></div><div class="pure-u-1 pure-u-md-3-4"><div id="footer">Copyright © 2022 <a href="/." rel="nofollow">OverTheRainbow.</a> Powered by<a rel="nofollow" target="_blank" href="https://hexo.io"> Hexo.</a><a rel="nofollow" target="_blank" href="https://github.com/tufu9441/maupassant-hexo"> Theme</a> by<a rel="nofollow" target="_blank" href="https://github.com/pagecho"> Cho.</a></div></div></div><a class="show" id="rocket" href="#top"></a><script type="text/javascript" src="/js/totop.js?v=1.0.0" async></script><script type="text/javascript" src="//cdn.jsdelivr.net/gh/fancyapps/fancybox/dist/jquery.fancybox.min.js" async></script><script type="text/javascript" src="/js/fancybox.js?v=1.0.0" async></script><link rel="stylesheet" type="text/css" href="//cdn.jsdelivr.net/gh/fancyapps/fancybox/dist/jquery.fancybox.min.css"><script type="text/javascript" src="/js/copycode.js?v=1.0.0" successtext="复制成功!"></script><link rel="stylesheet" type="text/css" href="/css/copycode.css?v=1.0.0"><script type="text/javascript" src="/js/codeblock-resizer.js?v=1.0.0"></script><script type="text/javascript" src="/js/smartresize.js?v=1.0.0"></script></div></body></html>
